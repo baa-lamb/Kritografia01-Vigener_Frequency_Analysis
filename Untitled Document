@@ -1,0 +1,325 @@
+#include "Vigener.h"
+
+Vigener::Vigener(string key, int maxKeySize) {
+    makeAlphabet();
+    key_ = key;
+    maxKeySize_ = maxKeySize;
+    alphabetSize_ = alphabet_.size();
+
+    fin_.open("files/input.txt");
+    foutEncrypt_.open("files/outputEncrypt.txt",ios::in | ios::out);
+    foutDecipher_.open("files/outputDecrypt.txt");
+    foutDecipherAnalysis_.open("files/outputDecryptAnalysis.txt");
+    foutEncrypt_.write("", 0);
+    foutDecipher_.write("", 0);
+    foutDecipherAnalysis_.write("", 0);
+}
+
+Vigener::~Vigener() {
+    fin_.close();
+    foutEncrypt_.close();
+    foutDecipher_.close();
+    foutDecipherAnalysis_.close();
+}
+
+void Vigener::makeAlphabet() {
+    for (int i = 32; i < 127; i++) {
+        alphabet_.insert(pair<char, int>((char)i, i - 32));
+        alphabetConv_.push_back((char)i);
+    }
+    alphabet_.insert(pair<char, int>('\r', 95));
+    alphabet_.insert(pair<char, int>('\n', 96));
+    alphabetConv_.push_back('\r');
+    alphabetConv_.push_back('\n');
+}
+
+void Vigener::encryptFile() {
+    if (!fin_.is_open())
+        cout << "error opening the input.txt";
+    else if (!foutEncrypt_.is_open())
+        cout << "error opening the outputEncrypt.txt";
+    else {
+        unsigned int keySize = key_.size();
+        int count = 0;
+        char symbol;
+        while ((symbol = fin_.get()) != EOF) {
+            if(alphabet_.find(symbol) == alphabet_.end()) {
+                alphabet_.insert(pair<char, int> (symbol, alphabet_.size()));
+                alphabetConv_.push_back(symbol);
+            }
+            int numberInAlphabet = (alphabet_[symbol] + alphabet_[key_[count % keySize]]) % (int)alphabetSize_;
+            foutEncrypt_ << alphabetConv_[numberInAlphabet];
+            count++;
+        }
+    }
+}
+
+void Vigener::decipherFile() {
+    ifstream FoutEncrypt_("files/outputEncrypt.txt");
+    if (!foutDecipher_.is_open())
+        cout << "error opening the 'outputDecipher'";
+    else if (!FoutEncrypt_.is_open())
+        cout << "error opening the 'outputEncrypt'";
+    else {
+        //FoutEncrypt_.clear();
+        //FoutEncrypt_.seekg(0, ios::beg);
+        unsigned int keySize = key_.size();
+        int count = 0;
+        char symbol;
+        while ((symbol = FoutEncrypt_.get()) != EOF) {
+            int numberInAlphabet = (alphabet_[symbol] - alphabet_[key_[count % keySize]]) % (int)alphabetSize_;
+            while (numberInAlphabet < 0)
+                numberInAlphabet += alphabetSize_;
+            foutDecipher_ << alphabetConv_[numberInAlphabet];
+            count++;
+        }
+    }
+}
+
+int Vigener::getNumberOfCharacters() {
+    int count = 0;
+    char symbol;
+    foutEncrypt_.clear();
+    foutEncrypt_.seekg(0, ios::beg);
+    while ((symbol = foutEncrypt_.get()) != EOF) {
+        count++;
+    }
+    return count;
+}
+
+double Vigener::findMatchIndex(int mod) {
+    map <char, double> statistic;
+    int count = -1, countNewText = 0;
+    char symbol;
+    foutEncrypt_.clear();
+    foutEncrypt_.seekg(0, ios::beg);
+    while ((symbol = foutEncrypt_.get()) != EOF) {
+        count++;
+        if (count % mod != 0)
+            continue;
+        if (statistic.find(symbol) == statistic.end())
+            statistic.insert(pair<char, double>(symbol, 1.000));
+        else
+            statistic[symbol]++;
+        countNewText ++;
+    }
+    double index = 0.000;
+    for(auto it = statistic.begin(); it != statistic.end(); it++){
+        index += ((it -> second) * (it -> second - 1.000)) / ((double)countNewText * ((double)countNewText - 1.000));
+    }
+    return index;
+}
+
+int Vigener::getKeySize() {
+    double index = 0.000, max = findMatchIndex(1);
+    int keySize = 1;
+    for(int i = 2; i <= maxKeySize_; i++) {
+        index = findMatchIndex(i);
+        //cout << i << " ___ " << index << endl;
+        if ((max > 0.02000) < (index)) { // найти отличающееся от всех значение, а оно находится как правло в этих пределах
+            max = index;
+            keySize = i;
+        }
+    }
+    return keySize;
+}
+
+map<char, double> Vigener::getStatistics(fstream &file) {
+    map<char, double> statistics;
+    file.clear();
+    file.seekg(0, ios::beg);
+    char symbol;
+    while ((symbol = file.get()) != EOF) {
+        if (statistics.find(symbol) == statistics.end())
+            statistics.insert(pair<char, double>(symbol, 1.000));
+        else
+            statistics[symbol]++;
+    }
+    int sizeText = getNumberOfCharacters();
+    for (auto it = statistics.begin(); it != statistics.end(); ++it) {
+        it -> second = (it -> second * 100.000 / (double)sizeText) ;
+    }
+    return statistics;
+
+}
+
+
+string Vigener::passOfCaesar(int start, int step) {
+    foutEncrypt_.clear();
+    foutEncrypt_.seekg(0, ios::beg);
+    string result = "";
+    char symbol = 0;
+    int i = 0;
+    while ((symbol = foutEncrypt_.get()) != EOF) {
+        if(i == start || i == start + step) {
+            start += step;
+            result.push_back(symbol);
+        }
+        i++;
+    }
+    /*for(int i = 0; i < result.size(); i++)
+        cout << result[i];
+    cout << endl;*/
+    return result;
+}
+
+void Vigener::decipherByAnalisis() {
+    fstream exampleFile;
+    exampleFile.open("files/example.txt", ios::in);
+    if (!exampleFile.is_open())
+        cout << "example file can't open" << endl;
+    else {
+        int keySize = getKeySize();
+        cout << "My Key size -> " <<keySize << endl;
+        map<char, double> statisticEn = getStatistics(foutEncrypt_);
+        map<char, double> statisticEx = getStatistics(exampleFile);
+
+        vector<pair<char,double>> vectEn;
+        vector<pair<char,double>> vectEx;
+
+        for(auto it = statisticEn.begin(); it != statisticEn.end(); ++it)
+            vectEn.push_back(*it);
+        for(auto it = statisticEx.begin(); it != statisticEx.end(); ++it)
+            vectEx.push_back(*it);
+       // sort(vectEn.begin(), vectEn.end(), compare);
+       // sort(vectEx.begin(), vectEx.end(), compare);
+
+        cout << vectEn.size() << endl;
+        for (auto it = vectEn.begin(); it != vectEn.end(); it++)
+            cout << "ENCEYPT: " << it -> first << " " << it -> second << endl;
+        cout << vectEx.size() << endl;
+        for (auto it = vectEx.begin(); it != vectEx.end(); it++)
+            cout << "EXAMPLE: " << it -> first << " " << it -> second << endl;
+
+        /*map<char, char> juxtaposition;
+        int size = 0;
+        vectEn.size() < vectEx.size() ? size = vectEn.size() : size = vectEx.size();
+        for(int i = 0; i < size; i++) {
+            juxtaposition.insert(pair<char, char>(vectEn[i].first, vectEx[i].first));
+        }
+
+        string key;
+        foutEncrypt_.clear();
+        foutEncrypt_.seekg(0, ios::beg);
+        char symbol;
+        int j = 0;
+        while ((symbol = foutEncrypt_.get()) != EOF && j < keySize) {
+            j++;
+            int k = (alphabet_[symbol] - alphabet_[juxtaposition[symbol]]) % (int)alphabetSize_;
+            while (k < 0)
+                k += (int)alphabetSize_;
+            key.push_back(alphabetConv_[k]);
+        }
+        key_ = key;
+        for (int i = 0; i < key_.size(); i++){}
+            cout << key_;
+        //decipherFile();*/
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+        int textSize = getNumberOfCharacters();
+        vector<int> res; vector<double> sum;
+        for(int k = 0; k < keySize; k++) {
+            string strCeasar = passOfCaesar(k, keySize);
+            for (int i = 0; i <= alphabetSize_; i++) {
+                double chiSquard = 0.000;
+                for (int j = 0; j < strCeasar.size(); j++) {
+                    chiSquard = chiSquard + (((double)statisticEn[strCeasar[j]] - (double)statisticEx[alphabetConv_[i]])*((double)statisticEn[strCeasar[j]] - (double)statisticEx[alphabetConv_[i]])) /((double)statisticEx[alphabetConv_[i]]);
+                }
+                sum.push_back(chiSquard);
+                if (i == alphabetSize_ ) {
+                    double min = sum[0];int flag = 0;
+                    for(int l = 0; l < sum.size(); l++) {
+                        if(sum[l] < min) {
+                            min = sum[l];
+                            flag = l;
+                            res.push_back(flag);
+                        }
+                        sum.clear();
+                    }
+                }
+            }
+
+        }
+        for (int m = 0; m < keySize; ++m) {
+            cout << "\n" <<statisticEx[res[alphabetConv_[m]]];
+        }*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <algorithm>
+#include <string>
+#include <ctime>
+#include <clocale>
+#include <map>
+
+using namespace std;
+
+class Vigener {
+private:
+    map<char, int> alphabet_;
+    vector<char> alphabetConv_;
+    unsigned int alphabetSize_;
+    int maxKeySize_;
+    string key_;
+    ifstream fin_;
+    fstream foutEncrypt_;
+    ofstream foutDecipher_;
+    ofstream foutDecipherAnalysis_;
+
+
+public:
+    Vigener(string key, int maxKeySize);
+    ~Vigener();
+    void makeAlphabet();
+
+    void encryptFile();
+    void decipherFile();
+    void decipherByAnalisis();
+
+
+    int getNumberOfCharacters();
+    map<char, double> getStatistics(fstream &file);
+    string passOfCaesar (int start, int step);
+    double findMatchIndex(int mod);
+    int getKeySize();
+};
+
+
